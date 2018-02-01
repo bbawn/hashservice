@@ -8,7 +8,7 @@ Server command-line usage:
 
 ```
 $ hashservice --help
-Usage of ./hashservice:
+Usage of hashservice:
   -addr string
           http service address (default ":8080")
 ```
