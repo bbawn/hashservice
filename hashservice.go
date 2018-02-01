@@ -52,25 +52,39 @@ var hashIdCounter Counter
 type MapCache struct {
 	sync.RWMutex
 	m map[int]string
+
+	// Sum of all processing times for element of m
+	totalTime time.Duration
 }
 
 func NewMapCache() *MapCache {
-	hc := new(MapCache)
-	hc.m = make(map[int]string)
-	return hc
+	mc := new(MapCache)
+	mc.m = make(map[int]string)
+	return mc
 }
 
-func (hc *MapCache) Set(id int, value string) {
-	hc.Lock()
-	hc.m[id] = value
-	hc.Unlock()
+func (mc *MapCache) Set(id int, value string, startTime time.Time) {
+	mc.Lock()
+	mc.m[id] = value
+	procTime := time.Now().Sub(startTime)
+	mc.totalTime += procTime
+	mc.Unlock()
+	log.Printf("Set %v, %v, procTime %v", id, value, procTime)
 }
 
-func (hc *MapCache) Get(id int) (string, bool) {
-	hc.RLock()
-	value, ok := hc.m[id]
-	hc.RUnlock()
+func (mc *MapCache) Get(id int) (string, bool) {
+	mc.RLock()
+	value, ok := mc.m[id]
+	mc.RUnlock()
 	return value, ok
+}
+
+func (mc *MapCache) GetStats() (int64, time.Duration) {
+	mc.RLock()
+	count := len(mc.m)
+	totalTime := mc.totalTime
+	mc.RUnlock()
+	return int64(count), totalTime
 }
 
 var hashCache = NewMapCache()
@@ -88,7 +102,8 @@ func setupShutdown() chan struct{} {
 
 func doHashAsync(id int, s string) {
 	time.Sleep(time.Duration(*delay) * time.Millisecond)
-	hashCache.Set(id, hashAndEncode(s))
+	startTime := time.Now()
+	hashCache.Set(id, hashAndEncode(s), startTime)
 }
 
 func hashHandlerSync(w http.ResponseWriter, req *http.Request) {
@@ -135,11 +150,25 @@ func hashAsyncFinishHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func statsHandler(w http.ResponseWriter, req *http.Request) {
+	log.Printf("statsHandler %v", *req)
+	count, totalTime := hashCache.GetStats()
+	var avg float64
+	if count != 0 {
+		log.Printf("totalTime %v msec %v count %v", totalTime, time.Millisecond, count)
+		avg = float64(totalTime) / (float64(count * int64(time.Millisecond)))
+	}
+	// XXX pkg json?
+	statsJson := fmt.Sprintf("{\"total\": %v, \"average\": %v}", count, avg)
+	w.Write([]byte(statsJson))
+}
+
 func main() {
 	flag.Parse()
 	stop := setupShutdown()
 	http.Handle("/hash", http.HandlerFunc(hashAsyncStartHandler))
 	http.Handle("/hash/id/", http.HandlerFunc(hashAsyncFinishHandler))
+	http.Handle("/stats", http.HandlerFunc(statsHandler))
 
 	// Synchronous POST endpoint from Step 2 of exercise
 	http.Handle("/hashsync", http.HandlerFunc(hashHandlerSync))
