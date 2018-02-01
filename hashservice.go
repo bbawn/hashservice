@@ -5,7 +5,6 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -36,7 +35,7 @@ func startHttpServer() *http.Server {
 func setupShutdown() chan struct{} {
 	stop := make(chan struct{})
 	handler := func(w http.ResponseWriter, req *http.Request) {
-		fmt.Println("shutdownHandler")
+		log.Println("shutdownHandler")
 		close(stop)
 	}
 	http.Handle("/shutdown", http.HandlerFunc(handler))
@@ -48,9 +47,9 @@ func hashHandlerSync(w http.ResponseWriter, req *http.Request) {
 	// TODO: POST only??
 	// Explicitly w.Header().Set("Content-Type", ...), WriteHeader
 	// Consider Request ParseForm for full validation?
-	fmt.Println("delaying %v sec, password %v", delay, req.PostFormValue("password"))
+	log.Printf("delaying %v msec, password %v", *delay, req.PostFormValue("password"))
 	time.Sleep(time.Duration(*delay) * time.Millisecond)
-	fmt.Println("delayed %v sec, password %v", delay, req.PostFormValue("password"))
+	log.Printf("delayed %v msec, password %v", *delay, req.PostFormValue("password"))
 	w.Write([]byte(hashAndEncode(req.PostFormValue("password"))))
 }
 
@@ -59,7 +58,7 @@ func hashHandlerAsync(w http.ResponseWriter, req *http.Request) {
 	// Explicitly w.Header().Set("Content-Type", ...), WriteHeader
 	if req.Method == "POST" {
 		time.Sleep(time.Duration(*delay) * time.Millisecond)
-		fmt.Println("delayed %v sec, password %v", delay, req.FormValue("password"))
+		log.Println("delayed %v msec, password %v", *delay, req.FormValue("password"))
 		w.Write([]byte(hashAndEncode(req.FormValue("password"))))
 	} else if req.Method == "GET" {
 	}
