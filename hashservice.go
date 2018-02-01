@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha512"
 	"encoding/base64"
 	"flag"
@@ -32,11 +33,11 @@ func startHttpServer() *http.Server {
 	return srv
 }
 
-func setupShutdown() chan bool {
-	stop := make(chan bool)
+func setupShutdown() chan struct{} {
+	stop := make(chan struct{})
 	handler := func(w http.ResponseWriter, req *http.Request) {
 		fmt.Println("shutdownHandler")
-		stop <- true // XXX close instead? Done() idiom?
+		close(stop)
 	}
 	http.Handle("/shutdown", http.HandlerFunc(handler))
 
@@ -76,7 +77,7 @@ func main() {
 	srv := startHttpServer()
 
 	<-stop
-	if err := srv.Shutdown(nil); err != nil {
+	if err := srv.Shutdown(context.Background()); err != nil {
 		log.Printf("INFO: hashservice: Shutdown() error: %s", err)
 	}
 }
