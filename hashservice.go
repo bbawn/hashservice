@@ -35,21 +35,21 @@ func startHttpServer() *http.Server {
 	return srv
 }
 
-type Counter struct {
+type counter struct {
 	sync.Mutex
 	n int
 }
 
-func (c *Counter) next() int {
+func (c *counter) next() int {
 	c.Lock()
 	c.n++
 	c.Unlock()
 	return c.n
 }
 
-var hashIdCounter Counter
+var hashIdCounter counter
 
-type MapCache struct {
+type mapCache struct {
 	sync.RWMutex
 	m map[int]string
 
@@ -57,13 +57,13 @@ type MapCache struct {
 	totalTime time.Duration
 }
 
-func NewMapCache() *MapCache {
-	mc := new(MapCache)
+func NewMapCache() *mapCache {
+	mc := new(mapCache)
 	mc.m = make(map[int]string)
 	return mc
 }
 
-func (mc *MapCache) Set(id int, value string, startTime time.Time) {
+func (mc *mapCache) Set(id int, value string, startTime time.Time) {
 	mc.Lock()
 	mc.m[id] = value
 	procTime := time.Now().Sub(startTime)
@@ -72,14 +72,14 @@ func (mc *MapCache) Set(id int, value string, startTime time.Time) {
 	log.Printf("Set %v, %v, procTime %v", id, value, procTime)
 }
 
-func (mc *MapCache) Get(id int) (string, bool) {
+func (mc *mapCache) Get(id int) (string, bool) {
 	mc.RLock()
 	value, ok := mc.m[id]
 	mc.RUnlock()
 	return value, ok
 }
 
-func (mc *MapCache) GetStats() (int64, time.Duration) {
+func (mc *mapCache) GetStats() (int64, time.Duration) {
 	mc.RLock()
 	count := len(mc.m)
 	totalTime := mc.totalTime
@@ -89,30 +89,28 @@ func (mc *MapCache) GetStats() (int64, time.Duration) {
 
 var hashCache = NewMapCache()
 
-func setupShutdown() chan struct{} {
-	stop := make(chan struct{})
-	handler := func(w http.ResponseWriter, req *http.Request) {
-		log.Printf("shutdownHandler")
-		close(stop)
-	}
-	http.Handle("/shutdown", http.HandlerFunc(handler))
-
-	return stop
-}
-
 func doHashAsync(id int, s string) {
 	time.Sleep(time.Duration(*delay) * time.Millisecond)
 	startTime := time.Now()
 	hashCache.Set(id, hashAndEncode(s), startTime)
 }
 
-func hashHandlerSync(w http.ResponseWriter, req *http.Request) {
+func setupShutdown() (http.HandlerFunc, chan struct{}) {
+	stop := make(chan struct{})
+	handler := func(w http.ResponseWriter, req *http.Request) {
+		log.Printf("shutdownHandler")
+		close(stop)
+	}
+
+	return handler, stop
+}
+
+func hashSyncHandler(w http.ResponseWriter, req *http.Request) {
 	// TODO: POST only??
 	// Explicitly w.Header().Set("Content-Type", ...), WriteHeader
 	// Consider Request ParseForm for full validation?
 	log.Printf("delaying %v msec, password %v", *delay, req.PostFormValue("password"))
 	time.Sleep(time.Duration(*delay) * time.Millisecond)
-	log.Printf("delayed %v msec, password %v", *delay, req.PostFormValue("password"))
 	w.Write([]byte(hashAndEncode(req.PostFormValue("password"))))
 }
 
@@ -165,13 +163,14 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 
 func main() {
 	flag.Parse()
-	stop := setupShutdown()
+	shutdownHandler, stop := setupShutdown()
+	http.Handle("/shutdown", shutdownHandler)
 	http.Handle("/hash", http.HandlerFunc(hashAsyncStartHandler))
 	http.Handle("/hash/id/", http.HandlerFunc(hashAsyncFinishHandler))
 	http.Handle("/stats", http.HandlerFunc(statsHandler))
 
 	// Synchronous POST endpoint from Step 2 of exercise
-	http.Handle("/hashsync", http.HandlerFunc(hashHandlerSync))
+	http.Handle("/hashsync", http.HandlerFunc(hashSyncHandler))
 
 	srv := startHttpServer()
 	<-stop
