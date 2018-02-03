@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha512"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -17,24 +18,18 @@ import (
 var addr = flag.String("addr", ":8080", "http service address")
 var delay = flag.Int("delay", 5000, "Milliseconds to delay hashing")
 
+type stats struct {
+	Total   int     `json:"total"`
+	Average float64 `json:"average"`
+}
+
 func hashAndEncode(s string) string {
 	sBytes := []byte(s)
 	hashBytes := sha512.Sum512(sBytes)
 	return base64.StdEncoding.EncodeToString(hashBytes[:])
 }
 
-func startHttpServer() *http.Server {
-	srv := &http.Server{Addr: *addr}
-
-	go func() {
-		if err := srv.ListenAndServe(); err != nil {
-			log.Printf("INFO: hashservice: ListenAndServe() error: %s", err)
-		}
-	}()
-
-	return srv
-}
-
+// Generate sequential IDs
 type counter struct {
 	sync.Mutex
 	n int
@@ -47,8 +42,15 @@ func (c *counter) next() int {
 	return c.n
 }
 
+func (c *counter) reset() {
+	c.Lock()
+	c.n = 0
+	c.Unlock()
+}
+
 var hashIdCounter counter
 
+// Store hashed/encoded values, addressable by ID
 type mapCache struct {
 	sync.RWMutex
 	m map[int]string
@@ -69,7 +71,6 @@ func (mc *mapCache) Set(id int, value string, startTime time.Time) {
 	procTime := time.Now().Sub(startTime)
 	mc.totalTime += procTime
 	mc.Unlock()
-	log.Printf("Set %v, %v, procTime %v", id, value, procTime)
 }
 
 func (mc *mapCache) Get(id int) (string, bool) {
@@ -89,6 +90,11 @@ func (mc *mapCache) GetStats() (int64, time.Duration) {
 
 var hashCache = NewMapCache()
 
+func reset() {
+	hashCache = NewMapCache()
+	hashIdCounter.reset()
+}
+
 func doHashAsync(id int, s string) {
 	time.Sleep(time.Duration(*delay) * time.Millisecond)
 	startTime := time.Now()
@@ -98,7 +104,10 @@ func doHashAsync(id int, s string) {
 func setupShutdown() (http.HandlerFunc, chan struct{}) {
 	stop := make(chan struct{})
 	handler := func(w http.ResponseWriter, req *http.Request) {
-		log.Printf("shutdownHandler")
+		if req.Method != "GET" {
+			http.Error(w, "GET method is required", http.StatusMethodNotAllowed)
+			return
+		}
 		close(stop)
 	}
 
@@ -106,73 +115,108 @@ func setupShutdown() (http.HandlerFunc, chan struct{}) {
 }
 
 func hashSyncHandler(w http.ResponseWriter, req *http.Request) {
-	// TODO: POST only??
-	// Explicitly w.Header().Set("Content-Type", ...), WriteHeader
-	// Consider Request ParseForm for full validation?
-	log.Printf("delaying %v msec, password %v", *delay, req.PostFormValue("password"))
+	if req.Method != "POST" {
+		http.Error(w, "POST method is required", http.StatusMethodNotAllowed)
+		return
+	}
+
 	time.Sleep(time.Duration(*delay) * time.Millisecond)
-	w.Write([]byte(hashAndEncode(req.PostFormValue("password"))))
+	req.ParseForm()
+	pw, ok := req.PostForm["password"]
+	if !ok {
+		http.Error(w, "password parameter is required", http.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(hashAndEncode(pw[0])))
 }
 
 func hashAsyncStartHandler(w http.ResponseWriter, req *http.Request) {
-	// TODO: POST only??
-	// Make sure url path is exactly "/hash"?
-	// Explicitly w.Header().Set("Content-Type", ...), WriteHeader
-	if req.Method == "POST" {
-		id := hashIdCounter.next()
-		pw := req.FormValue("password")
-		// XXX err
-		log.Printf("async %v, password %v", id, pw)
-		go doHashAsync(id, pw)
-		w.Write([]byte(strconv.Itoa(id)))
+	if req.Method != "POST" {
+		http.Error(w, "POST method is required", http.StatusMethodNotAllowed)
+		return
 	}
+
+	req.ParseForm()
+	pw, ok := req.PostForm["password"]
+	if !ok {
+		http.Error(w, "password parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	id := hashIdCounter.next()
+	go doHashAsync(id, pw[0])
+	w.Write([]byte(strconv.Itoa(id)))
 }
 
 func hashAsyncFinishHandler(w http.ResponseWriter, req *http.Request) {
-	log.Printf("hashAsyncFinishHandler %v", *req)
-	if req.Method == "GET" {
-		comps := strings.Split(req.URL.Path, "/")
-		log.Printf("comps %v", comps)
-		id, err := strconv.Atoi(string(comps[3]))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		hashedValue, ok := hashCache.Get(id)
-		if !ok {
-			msg := fmt.Sprintf("Id %d not found", id)
-			http.Error(w, msg, http.StatusNotFound)
-			return
-		}
-		w.Write([]byte(hashedValue))
+	if req.Method != "GET" {
+		http.Error(w, "GET method is required", http.StatusMethodNotAllowed)
+		return
 	}
+
+	comps := strings.Split(req.URL.Path, "/")
+	id, err := strconv.Atoi(string(comps[3]))
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	hashedValue, ok := hashCache.Get(id)
+	if !ok {
+		msg := fmt.Sprintf("Id %d not found", id)
+		http.Error(w, msg, http.StatusNotFound)
+		return
+	}
+
+	w.Write([]byte(hashedValue))
 }
 
 func statsHandler(w http.ResponseWriter, req *http.Request) {
-	log.Printf("statsHandler %v", *req)
+	if req.Method != "GET" {
+		http.Error(w, "GET method is required", http.StatusMethodNotAllowed)
+		return
+	}
+
 	count, totalTime := hashCache.GetStats()
+	log.Printf("statsHandler totalTime %v count %v", totalTime, count)
 	var avg float64
 	if count != 0 {
-		log.Printf("totalTime %v msec %v count %v", totalTime, time.Millisecond, count)
 		avg = float64(totalTime) / (float64(count * int64(time.Millisecond)))
 	}
-	// XXX pkg json?
-	statsJson := fmt.Sprintf("{\"total\": %v, \"average\": %v}", count, avg)
-	w.Write([]byte(statsJson))
+	statsJson, err := json.Marshal(stats{int(count), avg})
+	if err != nil {
+		msg := fmt.Sprintf("json error: %v count: %v avg: %v", err, count, avg)
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+	w.Write(statsJson)
+}
+
+func newServeMux() (*http.ServeMux, chan struct{}) {
+	mux := http.NewServeMux()
+	shutdownHandler, stop := setupShutdown()
+	mux.Handle("/shutdown", shutdownHandler)
+	mux.Handle("/hash", http.HandlerFunc(hashAsyncStartHandler))
+	mux.Handle("/hash/id/", http.HandlerFunc(hashAsyncFinishHandler))
+	mux.Handle("/stats", http.HandlerFunc(statsHandler))
+
+	// Synchronous POST endpoint from Step 2 of exercise
+	mux.Handle("/hashsync", http.HandlerFunc(hashSyncHandler))
+
+	return mux, stop
 }
 
 func main() {
 	flag.Parse()
-	shutdownHandler, stop := setupShutdown()
-	http.Handle("/shutdown", shutdownHandler)
-	http.Handle("/hash", http.HandlerFunc(hashAsyncStartHandler))
-	http.Handle("/hash/id/", http.HandlerFunc(hashAsyncFinishHandler))
-	http.Handle("/stats", http.HandlerFunc(statsHandler))
+	mux, stop := newServeMux()
+	srv := &http.Server{Addr: *addr, Handler: mux}
 
-	// Synchronous POST endpoint from Step 2 of exercise
-	http.Handle("/hashsync", http.HandlerFunc(hashSyncHandler))
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			log.Printf("INFO: hashservice: ListenAndServe(): %s", err)
+		}
+	}()
 
-	srv := startHttpServer()
 	<-stop
 	if err := srv.Shutdown(context.Background()); err != nil {
 		log.Printf("INFO: hashservice: Shutdown() error: %s", err)
