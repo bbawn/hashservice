@@ -38,8 +38,9 @@ type counter struct {
 func (c *counter) next() int {
 	c.Lock()
 	c.n++
+	result := c.n
 	c.Unlock()
-	return c.n
+	return result
 }
 
 func (c *counter) reset() {
@@ -59,13 +60,13 @@ type mapCache struct {
 	totalTime time.Duration
 }
 
-func NewMapCache() *mapCache {
+func newMapCache() *mapCache {
 	mc := new(mapCache)
 	mc.m = make(map[int]string)
 	return mc
 }
 
-func (mc *mapCache) Set(id int, value string, startTime time.Time) {
+func (mc *mapCache) set(id int, value string, startTime time.Time) {
 	mc.Lock()
 	mc.m[id] = value
 	procTime := time.Now().Sub(startTime)
@@ -73,14 +74,14 @@ func (mc *mapCache) Set(id int, value string, startTime time.Time) {
 	mc.Unlock()
 }
 
-func (mc *mapCache) Get(id int) (string, bool) {
+func (mc *mapCache) get(id int) (string, bool) {
 	mc.RLock()
 	value, ok := mc.m[id]
 	mc.RUnlock()
 	return value, ok
 }
 
-func (mc *mapCache) GetStats() (int64, time.Duration) {
+func (mc *mapCache) getStats() (int64, time.Duration) {
 	mc.RLock()
 	count := len(mc.m)
 	totalTime := mc.totalTime
@@ -88,17 +89,25 @@ func (mc *mapCache) GetStats() (int64, time.Duration) {
 	return int64(count), totalTime
 }
 
-var hashCache = NewMapCache()
+func (mc *mapCache) reset() {
+	mc.Lock()
+	mc.m = make(map[int]string)
+	mc.totalTime = time.Duration(0)
+	mc.Unlock()
+}
 
+var hashCache = newMapCache()
+
+// Re-initialize state for unit tests
 func reset() {
-	hashCache = NewMapCache()
+	hashCache.reset()
 	hashIdCounter.reset()
 }
 
 func doHashAsync(id int, s string) {
 	time.Sleep(time.Duration(*delay) * time.Millisecond)
 	startTime := time.Now()
-	hashCache.Set(id, hashAndEncode(s), startTime)
+	hashCache.set(id, hashAndEncode(s), startTime)
 }
 
 func setupShutdown() (http.HandlerFunc, chan struct{}) {
@@ -166,7 +175,7 @@ func hashAsyncFinishHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	hashedValue, ok := hashCache.Get(id)
+	hashedValue, ok := hashCache.get(id)
 	if !ok {
 		msg := fmt.Sprintf("Id %d not found", id)
 		http.Error(w, msg, http.StatusNotFound)
@@ -182,7 +191,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	count, totalTime := hashCache.GetStats()
+	count, totalTime := hashCache.getStats()
 	var avg float64
 	if count != 0 {
 		avg = float64(totalTime) / (float64(count * int64(time.Millisecond)))

@@ -171,15 +171,14 @@ func BenchmarkSimple(b *testing.B) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 	client := ts.Client()
-	notFoundCount := 0
 	var wg sync.WaitGroup
 	var i int
 	reset()
 
-	hashRequestor := func() {
+	// Issue encoding request for given password
+	hashRequestor := func(password string) {
 		defer wg.Done()
-		pw := fmt.Sprintf("angryMonkey-%d-of-%d", i+1, b.N)
-		postData := url.Values{"password": {pw}}
+		postData := url.Values{"password": {password}}
 		resp, err := client.Post(ts.URL+"/hash",
 			"application/x-www-form-urlencoded",
 			strings.NewReader(postData.Encode()))
@@ -198,10 +197,11 @@ func BenchmarkSimple(b *testing.B) {
 		}
 	}
 
-	hashRetriever := func() {
+	// Request retrieval of a given id in interval [1, maxId]
+	hashRetriever := func(maxId int) {
 		defer wg.Done()
 
-		id := rand.Intn(i + 1)
+		id := 1 + rand.Intn(maxId)
 		u := fmt.Sprintf("%s/hash/id/%d", ts.URL, id)
 		resp, err := client.Get(u)
 		if err != nil {
@@ -209,9 +209,8 @@ func BenchmarkSimple(b *testing.B) {
 		}
 
 		// Some ids will not be available yet: not found is OK
-		if resp.StatusCode == http.StatusNotFound {
-			notFoundCount++
-		} else if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode != http.StatusNotFound &&
+			resp.StatusCode != http.StatusOK {
 			b.Errorf("GET statusCode: %d", resp.StatusCode)
 		}
 
@@ -220,9 +219,9 @@ func BenchmarkSimple(b *testing.B) {
 
 	for i = 0; i < b.N; i++ {
 		wg.Add(1)
-		go hashRequestor()
+		go hashRequestor(fmt.Sprintf("angryMonkey-%d-of-%d", i+1, b.N))
 		wg.Add(1)
-		go hashRetriever()
+		go hashRetriever(i + 1)
 
 		// For large enough N (~200), we run out of socket descriptors
 		// if we don't wait here. I think concurrent Client Do() calls
@@ -245,8 +244,8 @@ func BenchmarkSimple(b *testing.B) {
 		b.Errorf("expected: json Decode: %v", err)
 	}
 	wg.Wait()
-	log.Printf("BenchmarkSimple b.N %d notFoundCount %d stats total %d average %v ms",
-		b.N, notFoundCount, s.Total, s.Average)
+	log.Printf("BenchmarkSimple b.N %d stats total %d average %v ms",
+		b.N, s.Total, s.Average)
 }
 
 func TestMain(m *testing.M) {
