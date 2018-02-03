@@ -17,7 +17,8 @@ import (
 	"time"
 )
 
-const TestDelay = 2
+// Tests don't need a long delay
+const TestDelayMsec = 2
 
 var hashedAngryMonkey = "ZEHhWB65gUlzdVwtDQArEyx+KVLzp/aTaRaPlBzYRIFj6vjFdqEb0Q5B8zVKCZ0vKbZPZklJz0Fd7su2A+gf7Q=="
 
@@ -25,7 +26,6 @@ func handlerGet(f http.HandlerFunc, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("GET", path, nil)
 	w := httptest.NewRecorder()
 	f(w, req)
-	log.Printf("TestSyncSimple: w %v req %v", w, *req)
 
 	return w
 }
@@ -36,7 +36,6 @@ func handlerPost(f http.HandlerFunc, path string, postData url.Values) *httptest
 	req.Header.Add("Content-Length", strconv.Itoa(len(postData.Encode())))
 	w := httptest.NewRecorder()
 	f(w, req)
-	log.Printf("TestSyncSimple: w %v req %v", w, *req)
 
 	return w
 }
@@ -76,7 +75,7 @@ func TestAsyncSimple(t *testing.T) {
 
 	// Sleep long enough for the hashing to complete
 	// NOTE: non-deterministic, GET could fail on a heavily-loaded system
-	time.Sleep(10 * time.Duration(TestDelay) * time.Millisecond)
+	time.Sleep(10 * time.Duration(TestDelayMsec) * time.Millisecond)
 
 	// Retrieve password by id
 	path := fmt.Sprintf("/hash/id/%d", id)
@@ -138,6 +137,11 @@ func TestInvalidReqs(t *testing.T) {
 	}
 
 	// Invalid paths
+	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/id/1/foo")
+	if http.StatusBadRequest != w.Code {
+		t.Errorf("expected: %v got: %v", http.StatusBadRequest, w.Code)
+	}
+
 	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/id/foo")
 	if http.StatusBadRequest != w.Code {
 		t.Errorf("expected: %v got: %v", http.StatusBadRequest, w.Code)
@@ -192,13 +196,14 @@ func BenchmarkSimple(b *testing.B) {
 	hashRetriever := func() {
 		defer wg.Done()
 
-		// Some ids will not be available yet
 		id := rand.Intn(i + 1)
 		u := fmt.Sprintf("%s/hash/id/%d", ts.URL, id)
 		resp, err := client.Get(u)
 		if err != nil {
 			b.Errorf("GET err: %v", err)
 		}
+
+		// Some ids will not be available yet: not found is OK
 		if resp.StatusCode == http.StatusNotFound {
 			notFoundCount++
 		} else if resp.StatusCode != http.StatusOK {
@@ -235,12 +240,11 @@ func BenchmarkSimple(b *testing.B) {
 		b.Errorf("expected: json Decode: %v", err)
 	}
 	wg.Wait()
-	log.Printf("BenchmarkSimple b.N %d notFoundCount %d stats total %d average %v",
+	log.Printf("BenchmarkSimple b.N %d notFoundCount %d stats total %d average %v ms",
 		b.N, notFoundCount, s.Total, s.Average)
 }
 
 func TestMain(m *testing.M) {
-	// Tests don't need a long delay
-	*delay = TestDelay
+	*delay = TestDelayMsec
 	os.Exit(m.Run())
 }

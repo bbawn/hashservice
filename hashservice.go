@@ -155,9 +155,14 @@ func hashAsyncFinishHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	comps := strings.Split(req.URL.Path, "/")
+	if len(comps) != 4 {
+		http.Error(w, "Invalid path: "+req.URL.Path, http.StatusBadRequest)
+		return
+	}
+
 	id, err := strconv.Atoi(string(comps[3]))
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, "Invalid ID: path: "+req.URL.Path, http.StatusBadRequest)
 		return
 	}
 
