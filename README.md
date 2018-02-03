@@ -1,4 +1,4 @@
-# hashservice
+# hashservice [![Go Report Card](https://goreportcard.com/badge/github.com/bbawn/hashservice)](https://goreportcard.com/report/github.com/bbawn/hashservice)
 
 A coding exercise that implements an http service that hashes strings with SHA-512 and returns base64 encoded result.
 
