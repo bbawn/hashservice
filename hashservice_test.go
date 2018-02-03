@@ -40,7 +40,7 @@ func handlerPost(f http.HandlerFunc, path string, postData url.Values) *httptest
 	return w
 }
 
-func TestPassword(t *testing.T) {
+func TestHashAndEncode(t *testing.T) {
 	got := hashAndEncode("angryMonkey")
 	if hashedAngryMonkey != got {
 		t.Errorf("expected: %v got: %v", hashedAngryMonkey, got)
@@ -48,13 +48,18 @@ func TestPassword(t *testing.T) {
 }
 
 func TestSyncSimple(t *testing.T) {
-	postData := url.Values{"password": {"angryMonkey"}}
-	w := handlerPost(http.HandlerFunc(hashSyncHandler), "/hashsync", postData)
-	if 200 != w.Code {
-		t.Errorf("expected: %v got: %v", 200, w.Code)
-	}
-	if hashedAngryMonkey != w.Body.String() {
-		t.Errorf("expected: %v got: %v", hashedAngryMonkey, w.Body.String())
+	samples := []string{"angryMonkey", "", "1", "angryMonkey1"}
+
+	for _, pw := range samples {
+		postData := url.Values{"password": {pw}}
+		w := handlerPost(http.HandlerFunc(hashSyncHandler), "/hashsync", postData)
+		if http.StatusOK != w.Code {
+			t.Errorf("expected: %v got: %v", http.StatusOK, w.Code)
+		}
+		expected := hashAndEncode(pw)
+		if expected != w.Body.String() {
+			t.Errorf("expected: %v got: %v", expected, w.Body.String())
+		}
 	}
 }
 

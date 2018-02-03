@@ -183,7 +183,6 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	count, totalTime := hashCache.GetStats()
-	log.Printf("statsHandler totalTime %v count %v", totalTime, count)
 	var avg float64
 	if count != 0 {
 		avg = float64(totalTime) / (float64(count * int64(time.Millisecond)))
