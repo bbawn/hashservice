@@ -1,0 +1,22 @@
+curl --data "password=angryMonkey1" http://localhost:8080/hash   &
+curl --data "password=angryMonkey2" http://localhost:8080/hash   &
+curl --data "password=angryMonkey3" http://localhost:8080/hash   &
+curl --data "password=angryMonkey4" http://localhost:8080/hash   &
+curl --data "password=angryMonkey5" http://localhost:8080/hash   &
+curl --data "password=angryMonkey6" http://localhost:8080/hash   &
+curl --data "password=angryMonkey7" http://localhost:8080/hash   &
+curl --data "password=angryMonkey8" http://localhost:8080/hash   &
+curl --data "password=angryMonkey9" http://localhost:8080/hash   &
+curl --data "password=angryMonkey10" http://localhost:8080/hash   &
+curl --data "password=angryMonkey11" http://localhost:8080/hash   &
+curl --data "password=angryMonkey12" http://localhost:8080/hash   &
+
+echo $(curl http://localhost:8080/hash/id/1)
+echo $(curl http://localhost:8080/hash/id/12)
+echo $(curl http://localhost:8080/hash/id/121)
+
+sleep 6
+
+echo $(curl http://localhost:8080/hash/id/1)
+echo $(curl http://localhost:8080/hash/id/12)
+echo $(curl http://localhost:8080/hash/id/121)

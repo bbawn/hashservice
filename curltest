@@ -1,0 +1,5 @@
+time curl --data "password=angryMonkey" http://localhost:8080/hash &
+time curl --data "password=angryMonkey1" http://localhost:8080/hash &
+time curl --data "password=angryMonkey2" http://localhost:8080/hash &
+time curl --data "password=angryMonkey3" http://localhost:8080/hash &
+time curl --data "password=angryMonkey4" http://localhost:8080/hash &
