@@ -123,6 +123,7 @@ func setupShutdown() (http.HandlerFunc, chan struct{}) {
 	return handler, stop
 }
 
+// Hash/encode password and return it in response
 func hashSyncHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		http.Error(w, "POST method is required", http.StatusMethodNotAllowed)
@@ -139,6 +140,7 @@ func hashSyncHandler(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(hashAndEncode(pw[0])))
 }
 
+// Schedule hashing of password, return ID to be used for retrieval
 func hashAsyncStartHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		http.Error(w, "POST method is required", http.StatusMethodNotAllowed)
@@ -157,6 +159,7 @@ func hashAsyncStartHandler(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(strconv.Itoa(id)))
 }
 
+// Retrieve a hashed password using its ID
 func hashAsyncFinishHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "GET" {
 		http.Error(w, "GET method is required", http.StatusMethodNotAllowed)
