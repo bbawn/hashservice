@@ -83,7 +83,7 @@ func TestAsyncSimple(t *testing.T) {
 	time.Sleep(10 * time.Duration(TestDelayMsec) * time.Millisecond)
 
 	// Retrieve password by id
-	path := fmt.Sprintf("/hash/id/%d", id)
+	path := fmt.Sprintf("/hash/%d", id)
 	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), path)
 	if http.StatusOK != w.Code {
 		t.Errorf("expected: %v got: %v", http.StatusOK, w.Code)
@@ -121,7 +121,7 @@ func TestAsyncSimple(t *testing.T) {
 func TestInvalidReqs(t *testing.T) {
 
 	// Invalid Methods
-	w := handlerPost(http.HandlerFunc(hashAsyncFinishHandler), "/hash/id/1", nil)
+	w := handlerPost(http.HandlerFunc(hashAsyncFinishHandler), "/hash/1", nil)
 	if http.StatusMethodNotAllowed != w.Code {
 		t.Errorf("expected: %v got: %v", http.StatusMethodNotAllowed, w.Code)
 	}
@@ -131,7 +131,8 @@ func TestInvalidReqs(t *testing.T) {
 		t.Errorf("expected: %v got: %v", http.StatusMethodNotAllowed, w.Code)
 	}
 
-	w = handlerPost(http.HandlerFunc(hashAsyncFinishHandler), "/shutdown", nil)
+	h, _ := setupShutdown()
+	w = handlerPost(http.HandlerFunc(h), "/shutdown", nil)
 	if http.StatusMethodNotAllowed != w.Code {
 		t.Errorf("expected: %v got: %v", http.StatusMethodNotAllowed, w.Code)
 	}
@@ -142,17 +143,17 @@ func TestInvalidReqs(t *testing.T) {
 	}
 
 	// Invalid paths
-	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/id/1/foo")
+	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/1/foo")
 	if http.StatusBadRequest != w.Code {
 		t.Errorf("expected: %v got: %v", http.StatusBadRequest, w.Code)
 	}
 
-	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/id/foo")
+	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/foo")
 	if http.StatusBadRequest != w.Code {
 		t.Errorf("expected: %v got: %v", http.StatusBadRequest, w.Code)
 	}
 
-	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/id/12345678")
+	w = handlerGet(http.HandlerFunc(hashAsyncFinishHandler), "/hash/12345678")
 	if http.StatusNotFound != w.Code {
 		t.Errorf("expected: %v got: %v", http.StatusNotFound, w.Code)
 	}
@@ -202,7 +203,7 @@ func BenchmarkSimple(b *testing.B) {
 		defer wg.Done()
 
 		id := 1 + rand.Intn(maxId)
-		u := fmt.Sprintf("%s/hash/id/%d", ts.URL, id)
+		u := fmt.Sprintf("%s/hash/%d", ts.URL, id)
 		resp, err := client.Get(u)
 		if err != nil {
 			b.Errorf("GET err: %v", err)

@@ -164,12 +164,12 @@ func hashAsyncFinishHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	comps := strings.Split(req.URL.Path, "/")
-	if len(comps) != 4 {
+	if len(comps) != 3 {
 		http.Error(w, "Invalid path: "+req.URL.Path, http.StatusBadRequest)
 		return
 	}
 
-	id, err := strconv.Atoi(string(comps[3]))
+	id, err := strconv.Atoi(string(comps[2]))
 	if err != nil {
 		http.Error(w, "Invalid ID: path: "+req.URL.Path, http.StatusBadRequest)
 		return
@@ -210,7 +210,7 @@ func newServeMux() (*http.ServeMux, chan struct{}) {
 	shutdownHandler, stop := setupShutdown()
 	mux.Handle("/shutdown", shutdownHandler)
 	mux.Handle("/hash", http.HandlerFunc(hashAsyncStartHandler))
-	mux.Handle("/hash/id/", http.HandlerFunc(hashAsyncFinishHandler))
+	mux.Handle("/hash/", http.HandlerFunc(hashAsyncFinishHandler))
 	mux.Handle("/stats", http.HandlerFunc(statsHandler))
 
 	// Synchronous POST endpoint from Step 2 of exercise
