@@ -1,6 +1,0 @@
-echo $(curl --data "password=angryMonkey" http://localhost:8080/hash) &
-echo $(curl --data "password=angryMonkey1" http://localhost:8080/hash) &
-sleep 2
-echo $(curl http://localhost:8080/shutdown) 
-echo $(curl --data "password=angryMonkey2" http://localhost:8080/hash) &
-echo $(curl --data "password=angryMonkey3" http://localhost:8080/hash) &
